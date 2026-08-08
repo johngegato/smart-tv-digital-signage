@@ -12,6 +12,7 @@ let tvPlaylist = [];
 let tvCurrentIndex = -1;
 let tvIsPlaying = false;
 let tvLayout = 'fullscreen';
+let tvCacheStats = null;
 let serverInfo = { primaryIp: 'localhost', port: 3000 };
 let selectedUploadFile = null;
 let uploadFormVisible = false;
@@ -111,6 +112,7 @@ function handleServerMessage(msg) {
       tvCurrentIndex = msg.currentIndex ?? 0;
       tvIsPlaying    = msg.isPlaying ?? false;
       tvLayout       = msg.layout || 'fullscreen';
+      tvCacheStats   = msg.cacheStats || null;
       
       const qrUrlInput = document.getElementById('qr-url-input');
       const qrLabelInput = document.getElementById('qr-label-input');
@@ -202,6 +204,18 @@ function renderPlaylist() {
     const typeBadge = item.type === 'video' ? 'video' : 'image';
     const scheduleLabel = item.schedule ? item.schedule : 'all';
 
+    let cacheBadgeHtml = '';
+    if (tvCacheStats && tvCacheStats.items) {
+      const stat = tvCacheStats.items.find(s => s.id === item.id || s.url === item.url);
+      if (stat) {
+        if (stat.isCached) {
+          cacheBadgeHtml = `<span style="font-size:0.75rem; color:#10b981; margin-left:6px;" title="Media downloaded into TV local storage">⚡ Local Cache Ready</span>`;
+        } else if (stat.isDownloading) {
+          cacheBadgeHtml = `<span style="font-size:0.75rem; color:#f59e0b; margin-left:6px;" title="Downloading to TV local storage">📥 Downloading...</span>`;
+        }
+      }
+    }
+
     card.innerHTML = `
       <div class="card-index ${isPlaying ? 'playing' : ''}">${isPlaying ? '▶' : index + 1}</div>
       <div class="card-info">
@@ -210,6 +224,7 @@ function renderPlaylist() {
           <span class="card-type-badge ${typeBadge}">${typeBadge === 'video' ? '🎥 VIDEO' : '🖼️ IMAGE'}</span>
           <span>⏱ ${item.duration}s</span>
           <span>📅 ${scheduleLabel}</span>
+          ${cacheBadgeHtml}
         </div>
       </div>
       <div class="card-actions">
