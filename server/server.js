@@ -17,7 +17,7 @@ const fs = require('fs');
 const os = require('os');
 
 // ─── Configuration ────────────────────────────────────────────────────────────
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
@@ -87,22 +87,22 @@ app.get('/api/info', (req, res) => {
   });
 });
 
-/** Upload a media file — returns URL accessible by TV over LAN */
+/** Upload a media file — returns URL accessible by TV */
 app.post('/api/upload', upload.single('media'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded.' });
   }
 
-  const ips = getLocalIPs();
-  const primaryIp = ips.length > 0 ? ips[0].address : 'localhost';
-  const tvAccessibleUrl = `http://${primaryIp}:${PORT}/uploads/${req.file.filename}`;
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.headers.host;
+  const tvAccessibleUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
 
   res.json({
     success: true,
     filename: req.file.filename,
     originalName: req.file.originalname,
-    url: tvAccessibleUrl,           // For TV to fetch over LAN
-    localUrl: `/uploads/${req.file.filename}`, // For desktop preview
+    url: tvAccessibleUrl,
+    localUrl: `/uploads/${req.file.filename}`,
     size: req.file.size,
     mimetype: req.file.mimetype
   });
@@ -111,8 +111,8 @@ app.post('/api/upload', upload.single('media'), (req, res) => {
 /** List all uploaded media files */
 app.get('/api/uploads', (req, res) => {
   try {
-    const ips = getLocalIPs();
-    const primaryIp = ips.length > 0 ? ips[0].address : 'localhost';
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers.host;
 
     const files = fs.readdirSync(UPLOADS_DIR)
       .filter(f => !f.startsWith('.'))
@@ -122,7 +122,7 @@ app.get('/api/uploads', (req, res) => {
         const isVideo = ['.mp4', '.webm', '.ogg', '.mov', '.avi'].includes(ext);
         return {
           filename,
-          url: `http://${primaryIp}:${PORT}/uploads/${filename}`,
+          url: `${protocol}://${host}/uploads/${filename}`,
           localUrl: `/uploads/${filename}`,
           size: stats.size,
           modified: stats.mtime,

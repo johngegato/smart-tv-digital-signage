@@ -28,6 +28,40 @@ export class SignageWebSocketClient {
   }
 
   /**
+   * Helper to format WebSocket URL for both local LAN (ws://) and Render/cloud HTTPS (wss://)
+   */
+  buildWebSocketUrl(input, defaultPort = 3000) {
+    if (!input) return `ws://localhost:${defaultPort}`;
+    let str = input.trim();
+
+    // Already a complete ws:// or wss:// URL
+    if (str.startsWith('wss://') || str.startsWith('ws://')) {
+      return str;
+    }
+
+    const isSecure = str.startsWith('https://');
+    // Strip leading protocol and trailing slashes
+    str = str.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+
+    const isCloudDomain = str.includes('.onrender.com') ||
+                          str.includes('.railway.app') ||
+                          str.includes('.fly.dev') ||
+                          str.includes('.glitch.me') ||
+                          str.includes('.herokuapp.com');
+
+    if (isSecure || isCloudDomain) {
+      // Cloud HTTPS deployment -> Use WSS without appending port 3000!
+      return `wss://${str}`;
+    } else {
+      // Local IP / LAN deployment -> Use WS on target port
+      if (str.includes(':')) {
+        return `ws://${str}`;
+      }
+      return `ws://${str}:${defaultPort}`;
+    }
+  }
+
+  /**
    * Connect or Reconnect to Desktop Manager Server
    */
   connect(ip = null, port = null, deviceId = null, deviceName = null) {
@@ -38,7 +72,7 @@ export class SignageWebSocketClient {
 
     this.disconnect();
 
-    const wsUrl = `ws://${this.serverIp}:${this.serverPort}`;
+    const wsUrl = this.buildWebSocketUrl(this.serverIp, this.serverPort);
     console.log(`[WS-Client] Connecting (${this.deviceName}) to ${wsUrl}...`);
 
     try {
