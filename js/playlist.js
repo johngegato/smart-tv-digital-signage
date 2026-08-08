@@ -2,6 +2,7 @@
  * Playlist Manager Module - Data state and campaign presets
  */
 import { getStoredConfig, setStoredConfig, saveMediaBlob, getMediaBlob, deleteMediaBlob } from './storage.js';
+import { MediaCacheManager } from './cache.js';
 
 // Default Sample Campaign Items
 const DEFAULT_PLAYLIST = [
@@ -52,6 +53,10 @@ export class PlaylistManager {
     this.playlist = getStoredConfig('playlist', DEFAULT_PLAYLIST);
     this.currentIndex = 0;
     this.blobUrls = new Map(); // Cache generated object URLs for blobs
+    this.mediaCache = new MediaCacheManager();
+
+    // Trigger initial background cache & garbage collection
+    setTimeout(() => this.syncCache(), 1000);
   }
 
   /**
@@ -235,7 +240,26 @@ export class PlaylistManager {
         return objectUrl;
       }
     }
-    return item.url;
+    // Pass through MediaCacheManager for offline caching & fast local playback
+    return await this.mediaCache.getMediaUrl(item.url);
+  }
+
+  /**
+   * Sync background caching and automatic storage pruning
+   */
+  syncCache() {
+    if (this.mediaCache) {
+      this.mediaCache.preloadPlaylist(this.playlist);
+      this.mediaCache.pruneUnusedCache(this.playlist);
+    }
+  }
+
+  /**
+   * Get telemetry status of local storage cache for all items
+   */
+  async getCacheTelemetry() {
+    if (!this.mediaCache) return { cachedCount: 0, totalCount: this.playlist.length, items: [] };
+    return await this.mediaCache.getPlaylistCacheStats(this.playlist);
   }
 
   /**
@@ -248,9 +272,10 @@ export class PlaylistManager {
   }
 
   /**
-   * Save playlist state to LocalStorage
+   * Save playlist state to LocalStorage and sync cache
    */
   save() {
     setStoredConfig('playlist', this.playlist);
+    this.syncCache();
   }
 }

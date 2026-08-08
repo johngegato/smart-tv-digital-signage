@@ -35,17 +35,21 @@ class DigitalSignageApp {
     this.wsClient = new SignageWebSocketClient({
       deviceId: this.deviceId,
       deviceName: this.deviceName,
-      onStatusRequested: () => ({
-        deviceId: this.deviceId,
-        deviceName: this.deviceName,
-        playlist: this.playlistManager.getItems(),
-        currentIndex: this.playlistManager.currentIndex,
-        isPlaying: this.player.isPlaying,
-        layout: this.currentLayout,
-        tickerText: this.widgets.tickerText,
-        qrUrl: getStoredConfig('qrUrl', 'https://example.com/signage-promo'),
-        qrLabel: getStoredConfig('qrLabel', 'Scan to View Special Menu & Exclusive Offers')
-      }),
+      onStatusRequested: async () => {
+        const cacheStats = await this.playlistManager.getCacheTelemetry();
+        return {
+          deviceId: this.deviceId,
+          deviceName: this.deviceName,
+          playlist: this.playlistManager.getItems(),
+          currentIndex: this.playlistManager.currentIndex,
+          isPlaying: this.player.isPlaying,
+          layout: this.currentLayout,
+          tickerText: this.widgets.tickerText,
+          qrUrl: getStoredConfig('qrUrl', 'https://example.com/signage-promo'),
+          qrLabel: getStoredConfig('qrLabel', 'Scan to View Special Menu & Exclusive Offers'),
+          cacheStats
+        };
+      },
       onPlayItemCommand: async (idx) => {
         this.playlistManager.currentIndex = idx;
         await this.player.playCurrent();
@@ -57,16 +61,19 @@ class DigitalSignageApp {
       },
       onAddItemCommand: async (itemData) => {
         await this.playlistManager.addItem(itemData);
+        this.playlistManager.syncCache();
         this.renderStudioPlaylist();
         await this.player.playCurrent();
       },
       onUpdateItemCommand: async (itemData) => {
         await this.playlistManager.updateItem(itemData.id, itemData);
+        this.playlistManager.syncCache();
         this.renderStudioPlaylist();
         await this.player.playCurrent();
       },
       onDeleteItemCommand: async (id) => {
         await this.playlistManager.removeItem(id);
+        this.playlistManager.syncCache();
         this.renderStudioPlaylist();
         await this.player.playCurrent();
       },

@@ -78,7 +78,7 @@ export class SignageWebSocketClient {
     try {
       this.ws = new WebSocket(wsUrl);
 
-      this.ws.onopen = () => {
+      this.ws.onopen = async () => {
         console.log(`[WS-Client] Connected to Desktop Manager Server as ${this.deviceName}`);
         this.isConnected = true;
 
@@ -93,7 +93,7 @@ export class SignageWebSocketClient {
         if (this.onStateChange) this.onStateChange(true, wsUrl);
 
         // Send initial status
-        this.sendStatus();
+        await this.sendStatus();
       };
 
       this.ws.onmessage = (event) => {
@@ -154,9 +154,9 @@ export class SignageWebSocketClient {
   /**
    * Send full TV telemetry & status update back to Desktop Manager
    */
-  sendStatus(extraState = {}) {
+  async sendStatus(extraState = {}) {
     if (!this.isConnected) return;
-    const statusData = this.onStatusRequested ? this.onStatusRequested() : {};
+    const statusData = this.onStatusRequested ? await this.onStatusRequested() : {};
     this.send({
       type: 'tv_status',
       ...statusData,
@@ -172,62 +172,62 @@ export class SignageWebSocketClient {
 
     switch (msg.type) {
       case 'request_status':
-        this.sendStatus();
+        await this.sendStatus();
         break;
 
       case 'play_item':
         if (this.onPlayItemCommand) await this.onPlayItemCommand(msg.index);
-        this.sendStatus();
+        await this.sendStatus();
         break;
 
       case 'reorder':
         if (this.onReorderCommand) await this.onReorderCommand(msg.fromIndex, msg.toIndex);
-        this.sendStatus();
+        await this.sendStatus();
         break;
 
       case 'add_item':
         if (this.onAddItemCommand) await this.onAddItemCommand(msg.item);
-        this.sendStatus();
+        await this.sendStatus();
         break;
 
       case 'update_item':
         if (this.onUpdateItemCommand) await this.onUpdateItemCommand(msg.item);
-        this.sendStatus();
+        await this.sendStatus();
         break;
 
       case 'delete_item':
         if (this.onDeleteItemCommand) await this.onDeleteItemCommand(msg.id);
-        this.sendStatus();
+        await this.sendStatus();
         break;
 
       case 'play_pause':
         if (this.onPlayPauseCommand) this.onPlayPauseCommand();
-        this.sendStatus();
+        await this.sendStatus();
         break;
 
       case 'prev_item':
         if (this.onPrevItemCommand) this.onPrevItemCommand();
-        this.sendStatus();
+        await this.sendStatus();
         break;
 
       case 'next_item':
         if (this.onNextItemCommand) this.onNextItemCommand();
-        this.sendStatus();
+        await this.sendStatus();
         break;
 
       case 'set_layout':
         if (this.onSetLayoutCommand) this.onSetLayoutCommand(msg.layout);
-        this.sendStatus();
+        await this.sendStatus();
         break;
 
       case 'set_ticker':
         if (this.onSetTickerCommand) this.onSetTickerCommand(msg.text);
-        this.sendStatus();
+        await this.sendStatus();
         break;
 
       case 'set_qr':
         if (this.onSetQrCommand) this.onSetQrCommand(msg.url, msg.label);
-        this.sendStatus();
+        await this.sendStatus();
         break;
     }
   }
