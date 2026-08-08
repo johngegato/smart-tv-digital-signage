@@ -34,6 +34,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 // ─── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
+app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.use(express.static(PUBLIC_DIR));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
@@ -197,7 +198,21 @@ function sendToTvDevices(targetDeviceId, message) {
   }
 }
 
+// 25-second Ping/Pong Heartbeat to keep Render reverse proxy WebSockets active
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) return ws.terminate();
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 25000);
+
+wss.on('close', () => clearInterval(heartbeatInterval));
+
 wss.on('connection', (ws, req) => {
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
   let clientRole = 'unknown';
   let deviceId = null;
   let deviceName = null;

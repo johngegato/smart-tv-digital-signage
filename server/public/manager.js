@@ -39,7 +39,9 @@ async function fetchServerInfo() {
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────
 function connectWebSocket() {
-  const wsUrl = `ws://${window.location.host}`;
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${window.location.host}`;
+  console.log(`[WS] Connecting Manager UI to ${wsUrl}...`);
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
