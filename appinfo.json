@@ -1,0 +1,19 @@
+{
+  "id": "com.devant.smarttv.signage",
+  "version": "1.0.0",
+  "type": "web",
+  "main": "index.html",
+  "title": "Smart TV Digital Signage",
+  "appDescription": "HD Digital Signage & Ad Player for LG webOS TV and Devant Smart TVs",
+  "icon": "assets/icon.png",
+  "largeIcon": "assets/largeIcon.png",
+  "bgImage": "assets/splash.png",
+  "splashBackground": "assets/splash.png",
+  "vendor": "Digital Signage Solutions",
+  "resolution": "1920x1080",
+  "disableBackHistoryAPI": true,
+  "handlesNeedAuthorization": false,
+  "requiredPermissions": [
+    "network.state"
+  ]
+}

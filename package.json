@@ -1,0 +1,20 @@
+{
+  "name": "smart-tv-digital-signage-webos",
+  "version": "1.0.0",
+  "description": "HD Digital Signage & Ad Player for LG webOS Smart TVs with Desktop Remote Manager",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "server": "node server/server.js",
+    "package": "ares-package ."
+  },
+  "keywords": [
+    "digital-signage",
+    "webos-tv",
+    "lg-tv",
+    "ad-player",
+    "smart-tv"
+  ],
+  "author": "Digital Signage Solutions",
+  "license": "ISC"
+}

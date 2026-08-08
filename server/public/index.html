@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signage Desktop Manager — Remote Control Dashboard</title>
+  <meta name="description" content="Remote desktop manager for WebOS Smart TV digital signage. Upload media, edit campaigns, and control your TV display from your desktop.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!-- ── TOP HEADER BAR ─────────────────────────────────────────────── -->
+  <header id="app-header">
+    <div class="header-brand">
+      <div class="brand-icon">📺</div>
+      <div class="brand-text">
+        <span class="brand-name">Signage Manager</span>
+        <span class="brand-sub">Desktop Remote Control</span>
+      </div>
+    </div>
+
+    <div class="header-center">
+      <div id="now-playing-bar" class="now-playing hidden">
+        <span class="np-label">NOW ON TV</span>
+        <span id="np-title" class="np-title">—</span>
+        <span id="np-badge" class="np-badge">IMAGE</span>
+      </div>
+    </div>
+
+    <div class="header-status">
+      <div class="form-group" style="margin: 0; margin-right: 8px;">
+        <select id="target-tv-select" class="form-select" style="padding: 4px 8px; font-size: 0.8rem; background: rgba(15, 23, 42, 0.8);">
+          <option value="all">📺 Target: All Connected TVs</option>
+        </select>
+      </div>
+
+      <div id="tv-status-pill" class="status-pill disconnected">
+        <span id="tv-status-dot" class="status-dot"></span>
+        <span id="tv-status-text">TV Disconnected</span>
+      </div>
+      <div class="server-info-badge" id="server-ip-badge">
+        <span>⚡</span>
+        <span id="server-ip-display">localhost:3000</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── MAIN LAYOUT ────────────────────────────────────────────────── -->
+  <div id="app-layout">
+
+    <!-- ── LEFT SIDEBAR: Upload + Media Library ───────────────────── -->
+    <aside id="left-panel">
+
+      <!-- Upload Panel -->
+      <section class="panel" id="upload-panel">
+        <div class="panel-header">
+          <span class="panel-title">📤 Upload Media</span>
+        </div>
+        <div class="panel-body">
+
+          <!-- Drag & Drop Dropzone -->
+          <div id="upload-dropzone" class="dropzone">
+            <div class="dropzone-icon">🖼️</div>
+            <div id="dz-main-label" class="dz-main">Drop file here or click to browse</div>
+            <div id="dz-sub-label" class="dz-sub">Supports MP4, WebM, PNG, JPG, WebP · Max 500 MB</div>
+            <input type="file" id="upload-file-input" accept="image/*,video/*" class="hidden">
+          </div>
+
+          <!-- Upload Form Fields -->
+          <div id="upload-form-fields" class="hidden">
+            <div class="form-group">
+              <label class="form-label" for="upload-title">Campaign Title</label>
+              <input type="text" id="upload-title" class="form-input" placeholder="e.g. Morning Special 20% OFF">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="upload-subtitle">Subtitle / Description</label>
+              <input type="text" id="upload-subtitle" class="form-input" placeholder="e.g. Available 8 AM – 11 AM">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="upload-duration">Duration (sec)</label>
+                <input type="number" id="upload-duration" class="form-input" value="10" min="3" max="300">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="upload-schedule">Schedule</label>
+                <select id="upload-schedule" class="form-select">
+                  <option value="all">⏰ All Day</option>
+                  <option value="morning">🌅 Morning</option>
+                  <option value="afternoon">☀️ Afternoon</option>
+                  <option value="evening">🌙 Evening</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="upload-actions">
+              <button id="btn-upload-add" class="btn btn-primary btn-full">
+                <span>📺 Upload &amp; Add to TV</span>
+                <div id="upload-spinner" class="spinner hidden"></div>
+              </button>
+              <button id="btn-upload-cancel" class="btn btn-ghost btn-sm">Cancel</button>
+            </div>
+          </div>
+
+          <!-- URL Add Mode -->
+          <div class="divider-or"><span>or add by URL</span></div>
+          <div class="form-group">
+            <input type="url" id="url-input" class="form-input" placeholder="https://example.com/ad.jpg or .mp4">
+          </div>
+          <button id="btn-add-url" class="btn btn-secondary btn-full">🌐 Add Web URL to TV</button>
+        </div>
+      </section>
+
+      <!-- Media Library -->
+      <section class="panel" id="library-panel">
+        <div class="panel-header">
+          <span class="panel-title">🗄️ Media Library</span>
+          <button id="btn-refresh-library" class="btn btn-ghost btn-xs" title="Refresh library">↺</button>
+        </div>
+        <div id="media-library-list" class="library-list">
+          <div class="empty-state">No media uploaded yet.<br>Upload files above to get started.</div>
+        </div>
+      </section>
+
+    </aside>
+
+    <!-- ── RIGHT PANEL: Playlist + TV Controls ────────────────────── -->
+    <main id="right-panel">
+
+      <!-- TV Live Controls -->
+      <section class="panel" id="controls-panel">
+        <div class="panel-header">
+          <span class="panel-title">🎮 Live TV Controls</span>
+          <div id="tv-offline-notice" class="tv-offline-notice">TV not connected — controls disabled</div>
+        </div>
+        <div class="panel-body controls-body">
+          <!-- Playback -->
+          <div class="control-group">
+            <div class="control-group-label">Playback</div>
+            <div class="control-row">
+              <button id="ctrl-prev" class="ctrl-btn" title="Previous item" disabled>⏮</button>
+              <button id="ctrl-playpause" class="ctrl-btn ctrl-play" title="Play / Pause" disabled>⏸</button>
+              <button id="ctrl-next" class="ctrl-btn" title="Next item" disabled>⏭</button>
+            </div>
+          </div>
+
+          <!-- Layout -->
+          <div class="control-group">
+            <div class="control-group-label">Display Layout</div>
+            <div class="layout-btns">
+              <button class="layout-btn active" data-layout="fullscreen" disabled>🔴 Fullscreen</button>
+              <button class="layout-btn" data-layout="splitscreen" disabled>🟢 Split Screen</button>
+              <button class="layout-btn" data-layout="grid" disabled>🟡 Grid</button>
+              <button class="layout-btn" data-layout="portrait" disabled>📱 Portrait</button>
+            </div>
+          </div>
+
+          <!-- Ticker -->
+          <div class="control-group">
+            <div class="control-group-label">Ticker Announcement</div>
+            <div class="ticker-edit-row">
+              <input type="text" id="ticker-input" class="form-input" placeholder="Enter scrolling announcement text..." disabled>
+              <button id="btn-update-ticker" class="btn btn-secondary" disabled>💾 Push</button>
+            </div>
+          </div>
+
+          <!-- QR Code Manager -->
+          <div class="control-group">
+            <div class="control-group-label">QR Code Promo Widget</div>
+            <div class="form-group" style="margin-bottom: 6px;">
+              <input type="url" id="qr-url-input" class="form-input" placeholder="QR Code Target URL (e.g. https://menu.example.com)" disabled>
+            </div>
+            <div class="ticker-edit-row">
+              <input type="text" id="qr-label-input" class="form-input" placeholder="QR Widget Caption Text..." disabled>
+              <button id="btn-update-qr" class="btn btn-secondary" disabled>💾 Push QR</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Active Playlist -->
+      <section class="panel" id="playlist-panel">
+        <div class="panel-header">
+          <span class="panel-title">📋 Active Playlist on TV</span>
+          <div class="panel-header-actions">
+            <span id="playlist-count" class="count-badge">0 items</span>
+            <button id="btn-refresh-playlist" class="btn btn-ghost btn-xs" title="Refresh from TV">↺</button>
+          </div>
+        </div>
+        <div id="playlist-container" class="playlist-list">
+          <div class="empty-state">Connect your TV to view the active playlist.</div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ── STATUS FOOTER ──────────────────────────────────────────────── -->
+  <footer id="app-footer">
+    <div class="footer-left">
+      <span id="footer-server-status">⚡ Server running on port 3000</span>
+    </div>
+    <div class="footer-center" id="footer-tv-info">
+      <span id="footer-tv-state">TV not connected</span>
+    </div>
+    <div class="footer-right">
+      <span id="footer-last-sync">—</span>
+    </div>
+  </footer>
+
+  <!-- ── EDIT ITEM MODAL ────────────────────────────────────────────── -->
+  <div id="edit-modal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <span class="modal-title">✏️ Edit Campaign</span>
+        <button id="btn-close-edit" class="modal-close">✕</button>
+      </div>
+      <form id="edit-form" class="modal-body">
+        <input type="hidden" id="edit-item-id">
+        <div class="form-group">
+          <label class="form-label" for="edit-title">Campaign Title</label>
+          <input type="text" id="edit-title" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit-subtitle">Subtitle / Description</label>
+          <input type="text" id="edit-subtitle" class="form-input">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="edit-type">Media Type</label>
+            <select id="edit-type" class="form-select">
+              <option value="image">🖼️ Image</option>
+              <option value="video">🎥 Video</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="edit-duration">Duration (sec)</label>
+            <input type="number" id="edit-duration" class="form-input" min="3" max="300">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit-schedule">Schedule Slot</label>
+          <select id="edit-schedule" class="form-select">
+            <option value="all">⏰ All Day (24/7)</option>
+            <option value="morning">🌅 Morning</option>
+            <option value="afternoon">☀️ Afternoon</option>
+            <option value="evening">🌙 Evening</option>
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">💾 Save to TV</button>
+          <button type="button" id="btn-cancel-edit" class="btn btn-ghost">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── TOAST NOTIFICATION ─────────────────────────────────────────── -->
+  <div id="toast-container"></div>
+
+  <script src="./manager.js"></script>
+</body>
+</html>
