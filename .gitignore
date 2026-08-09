@@ -1,0 +1,28 @@
+# Node dependencies
+node_modules/
+server/node_modules/
+
+# Server uploads & temporary storage
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Build and package outputs
+*.ipk
+dist/
+coverage/
+
+# Logs and OS metadata
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Environment variables
+.env
+.env.local

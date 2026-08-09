@@ -15,11 +15,17 @@ export class MediaCacheManager {
     this.downloadQueue = new Set();
     this.pendingQueue = [];
     this.isProcessingQueue = false;
+    this.cacheHits = 0;
+    this.cacheMisses = 0;
     this.initDB();
   }
 
   initDB() {
     return new Promise((resolve) => {
+      if (typeof indexedDB === 'undefined') {
+        resolve(null);
+        return;
+      }
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = (e) => {
         const db = e.target.result;
@@ -48,26 +54,40 @@ export class MediaCacheManager {
 
     // Direct local relative assets or data/blob URLs pass through
     if (mediaUrl.startsWith('data:') || mediaUrl.startsWith('blob:') || mediaUrl.startsWith('./assets')) {
+      this.cacheHits++;
       return mediaUrl;
     }
 
     // Return in-memory blob URL if already created
     if (this.blobUrlMap.has(mediaUrl)) {
+      this.cacheHits++;
       return this.blobUrlMap.get(mediaUrl);
     }
 
     // Check IndexedDB storage
     const cachedRecord = await this.getFromDB(mediaUrl);
     if (cachedRecord && cachedRecord.blob) {
-      const blobUrl = URL.createObjectURL(cachedRecord.blob);
-      this.blobUrlMap.set(mediaUrl, blobUrl);
-      console.log(`[MediaCache] ⚡ Playing from local offline cache: ${mediaUrl.split('/').pop()}`);
-      return blobUrl;
+      this.cacheHits++;
+      if (typeof URL !== 'undefined' && URL.createObjectURL) {
+        const blobUrl = URL.createObjectURL(cachedRecord.blob);
+        this.blobUrlMap.set(mediaUrl, blobUrl);
+        console.log(`[MediaCache] ⚡ Playing from local offline cache: ${mediaUrl.split('/').pop()}`);
+        return blobUrl;
+      }
     }
 
-    // Trigger background cache & return original URL for first load
+    // Cache miss — trigger background cache & return original URL for first load
+    this.cacheMisses++;
     this.queueDownload(mediaUrl);
     return mediaUrl;
+  }
+
+  /**
+   * Get cache hit ratio metric (0.0 to 1.0)
+   */
+  getCacheHitRatio() {
+    const total = this.cacheHits + this.cacheMisses;
+    return total > 0 ? (this.cacheHits / total) : 1.0;
   }
 
   /**
@@ -82,10 +102,10 @@ export class MediaCacheManager {
   }
 
   /**
-   * Get cache status telemetry for a playlist (returns array of status objects per item)
+   * Get cache status telemetry for a playlist
    */
   async getPlaylistCacheStats(items) {
-    if (!items || !Array.isArray(items)) return { cachedCount: 0, totalCount: 0, items: [] };
+    if (!items || !Array.isArray(items)) return { cachedCount: 0, totalCount: 0, cacheHitRatio: this.getCacheHitRatio(), items: [] };
 
     let cachedCount = 0;
     const itemStatuses = [];
@@ -109,6 +129,7 @@ export class MediaCacheManager {
     return {
       cachedCount,
       totalCount: items.length,
+      cacheHitRatio: this.getCacheHitRatio(),
       items: itemStatuses
     };
   }
@@ -130,7 +151,7 @@ export class MediaCacheManager {
   }
 
   /**
-   * Queue download requests sequentially to avoid memory spikes / network congestion
+   * Queue download requests sequentially
    */
   queueDownload(url) {
     if (!url || this.downloadQueue.has(url) || this.pendingQueue.includes(url)) return;
@@ -175,19 +196,22 @@ export class MediaCacheManager {
 
     try {
       console.log(`[MediaCache] 📥 Downloading to offline TV storage: ${url.split('/').pop()}`);
+      if (typeof fetch === 'undefined') return;
+
       const response = await fetch(url);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const blob = await response.blob();
 
       await this.saveToDB(url, blob);
 
-      // If there was an old blob URL for this item, revoke it before creating new one
-      if (this.blobUrlMap.has(url)) {
+      if (this.blobUrlMap.has(url) && typeof URL !== 'undefined' && URL.revokeObjectURL) {
         try { URL.revokeObjectURL(this.blobUrlMap.get(url)); } catch (e) {}
       }
 
-      const blobUrl = URL.createObjectURL(blob);
-      this.blobUrlMap.set(url, blobUrl);
+      if (typeof URL !== 'undefined' && URL.createObjectURL) {
+        const blobUrl = URL.createObjectURL(blob);
+        this.blobUrlMap.set(url, blobUrl);
+      }
       console.log(`[MediaCache] ✅ Cached for offline play: ${url.split('/').pop()}`);
     } catch (e) {
       console.warn(`[MediaCache] Background cache failed for ${url}:`, e.message);
@@ -198,7 +222,7 @@ export class MediaCacheManager {
 
   async saveToDB(url, blob) {
     if (!this.db) await this.initDB();
-    if (!this.db) return;
+    if (!this.db) return false;
 
     return new Promise((resolve) => {
       try {
@@ -215,7 +239,6 @@ export class MediaCacheManager {
 
   /**
    * Automatic Storage Garbage Collector (Pruning)
-   * Deletes cached media blobs from TV storage if they are no longer in the active playlist.
    */
   async pruneUnusedCache(activePlaylistItems) {
     if (!this.db) await this.initDB();
@@ -237,7 +260,7 @@ export class MediaCacheManager {
             const cachedUrl = cursor.key;
             if (!activeUrls.has(cachedUrl)) {
               console.log(`[MediaCache] 🗑️ Auto-pruning deleted media from TV storage: ${cachedUrl.split('/').pop()}`);
-              if (this.blobUrlMap.has(cachedUrl)) {
+              if (this.blobUrlMap.has(cachedUrl) && typeof URL !== 'undefined' && URL.revokeObjectURL) {
                 try { URL.revokeObjectURL(this.blobUrlMap.get(cachedUrl)); } catch (err) {}
                 this.blobUrlMap.delete(cachedUrl);
               }
@@ -255,4 +278,3 @@ export class MediaCacheManager {
     });
   }
 }
-

@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "description": "HD Digital Signage & Ad Player for LG webOS Smart TVs with Desktop Remote Manager",
   "main": "server/server.js",
+  "type": "module",
   "scripts": {
     "start": "node server/server.js",
     "server": "node server/server.js",
+    "dev": "node server/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "package": "ares-package ."
   },
   "keywords": [
@@ -16,5 +20,11 @@
     "smart-tv"
   ],
   "author": "Digital Signage Solutions",
-  "license": "ISC"
+  "license": "MIT",
+  "devDependencies": {
+    "fake-indexeddb": "^6.0.0",
+    "jsdom": "^24.0.0",
+    "vitest": "^1.4.0"
+  }
 }
+

@@ -3,15 +3,17 @@
  */
 
 export class WebOSHandler {
-  constructor() {
+  constructor(options = {}) {
+    this.enableHardwareKeepAlive = options.enableHardwareKeepAlive !== undefined ? options.enableHardwareKeepAlive : true;
     this.isWebOS = this.detectWebOS();
     this.deviceInfo = null;
     this.init();
   }
 
   detectWebOS() {
-    const ua = navigator.userAgent.toLowerCase();
-    return ua.includes('web0s') || ua.includes('webos') || typeof window.webOS !== 'undefined';
+    if (typeof navigator === 'undefined') return false;
+    const ua = (navigator.userAgent || '').toLowerCase();
+    return ua.includes('web0s') || ua.includes('webos') || (typeof window !== 'undefined' && typeof window.webOS !== 'undefined');
   }
 
   init() {
@@ -22,11 +24,14 @@ export class WebOSHandler {
       this.preventScreenSaver();
     } else {
       console.log('[webOS] Non-webOS environment detected (Web browser mode)');
+      if (this.enableHardwareKeepAlive) {
+        this.requestWakeLock();
+      }
     }
   }
 
   initWebOSSDK() {
-    if (window.webOS && window.webOS.deviceInfo) {
+    if (typeof window !== 'undefined' && window.webOS && window.webOS.deviceInfo) {
       window.webOS.deviceInfo((info) => {
         this.deviceInfo = info;
         console.log('[webOS] Device Info loaded:', info);
@@ -36,12 +41,13 @@ export class WebOSHandler {
   }
 
   initLifecycleEvents() {
-    // Listen for webOS TV App visibility/launch state events
+    if (typeof document === 'undefined') return;
+
     document.addEventListener('webOSLaunch', (e) => {
       console.log('[webOS] App Launched with parameters:', e.detail);
     });
 
-    document.addEventListener('webOSReopen', (e) => {
+    document.addEventListener('webOSReopen', () => {
       console.log('[webOS] App Reopened from background');
     });
 
@@ -50,47 +56,39 @@ export class WebOSHandler {
         console.log('[webOS] App moved to background');
       } else {
         console.log('[webOS] App returned to foreground');
+        this.requestWakeLock();
+        this.ensureHardwareVideoPlaying();
       }
     });
   }
 
   /**
    * Keep webOS TV screen active 24/7 during digital signage playback
-   * Completely prevents webOS "Press any key except power button" screensaver and clock mode.
    */
   preventScreenSaver() {
     console.log('[webOS] Initializing 24/7 Screen Keep-Awake Hardware & Luna Locks...');
 
-    // 1. Hardware Video Decoder Stream Keep-Alive (Prevents webOS Eco/Clock ScreenSaver)
-    this.initHardwareVideoKeepAlive();
+    if (this.enableHardwareKeepAlive) {
+      this.initHardwareVideoKeepAlive();
+    }
 
-    // 2. Web Screen WakeLock API (Standard Browser Keep-Awake)
     this.requestWakeLock();
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        this.requestWakeLock();
-        this.ensureHardwareVideoPlaying();
-      }
-    });
-
-    // 3. Initial webOS Luna Power Service call
     this.callWebOSPowerServices();
 
-    // 4. Periodic Keep-Alive Refresh (Every 15 seconds)
     setInterval(() => {
       this.callWebOSPowerServices();
-      this.ensureHardwareVideoPlaying();
+      if (this.enableHardwareKeepAlive) {
+        this.ensureHardwareVideoPlaying();
+      }
     }, 15000);
   }
 
   /**
    * Creates a hidden HTML5 Video element fed by a continuous 16x16 canvas stream.
-   * On LG webOS & Devant Smart TVs, an active hardware video decoding stream tells the OS
-   * hardware layer that media is playing, which 100% suppresses system idle/clock screensavers.
    */
   initHardwareVideoKeepAlive() {
     try {
-      if (document.getElementById('hw-keepalive-video')) return;
+      if (typeof document === 'undefined' || document.getElementById('hw-keepalive-video')) return;
 
       const canvas = document.createElement('canvas');
       canvas.width = 16;
@@ -99,12 +97,13 @@ export class WebOSHandler {
       document.body.appendChild(canvas);
       const ctx = canvas.getContext('2d');
 
-      // Continuous subtle color change frame to keep hardware video decoder active
       let val = 0;
       setInterval(() => {
         val = (val + 1) % 255;
-        ctx.fillStyle = `rgb(${val}, 128, 200)`;
-        ctx.fillRect(0, 0, 16, 16);
+        if (ctx) {
+          ctx.fillStyle = `rgb(${val}, 128, 200)`;
+          ctx.fillRect(0, 0, 16, 16);
+        }
       }, 1000);
 
       const stream = canvas.captureStream ? canvas.captureStream(5) : null;
@@ -120,7 +119,6 @@ export class WebOSHandler {
       vid.autoplay = true;
       vid.loop = true;
 
-      // Positioning out of sight
       vid.style.position = 'fixed';
       vid.style.width = '2px';
       vid.style.height = '2px';
@@ -133,36 +131,40 @@ export class WebOSHandler {
       if (stream) {
         vid.srcObject = stream;
       } else {
-        // Fallback: 1-pixel silent looping mp4 data URI
         vid.src = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAAptZGF0AAAA';
       }
 
       document.body.appendChild(vid);
-      vid.play().then(() => {
-        console.log('[webOS KeepAlive] 🎥 Hardware Video Stream Keep-Alive ACTIVE');
-      }).catch(e => {
-        console.warn('[webOS KeepAlive] Video play deferred:', e.message);
-      });
+      if (vid.play) {
+        vid.play().then(() => {
+          console.log('[webOS KeepAlive] 🎥 Hardware Video Stream Keep-Alive ACTIVE');
+        }).catch(e => {
+          console.warn('[webOS KeepAlive] Video play deferred:', e.message);
+        });
+      }
     } catch (e) {
       console.warn('[webOS KeepAlive] Hardware stream init error:', e.message);
     }
   }
 
   ensureHardwareVideoPlaying() {
+    if (typeof document === 'undefined') return;
     const vid = document.getElementById('hw-keepalive-video');
-    if (vid && vid.paused) {
+    if (vid && vid.paused && vid.play) {
       vid.play().catch(() => {});
     }
   }
 
   async requestWakeLock() {
     try {
-      if ('wakeLock' in navigator) {
+      if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
         this.wakeLock = await navigator.wakeLock.request('screen');
         console.log('[WakeLock] Screen Wake Lock active 24/7');
-        this.wakeLock.addEventListener('release', () => {
-          this.requestWakeLock();
-        });
+        if (this.wakeLock) {
+          this.wakeLock.addEventListener('release', () => {
+            this.requestWakeLock();
+          });
+        }
       }
     } catch (e) {
       console.warn('[WakeLock] Screen WakeLock unavailable or restricted:', e.message);
@@ -170,8 +172,7 @@ export class WebOSHandler {
   }
 
   callWebOSPowerServices() {
-    if (typeof window.webOS !== 'undefined' && window.webOS.service) {
-      // Method A: TV Power service turnOffScreenSaver
+    if (typeof window !== 'undefined' && window.webOS && window.webOS.service) {
       try {
         window.webOS.service.request('luna://com.webos.service.tv.power', {
           method: 'turnOffScreenSaver',
@@ -181,7 +182,6 @@ export class WebOSHandler {
         });
       } catch (e) {}
 
-      // Method B: System Power display keepOn
       try {
         window.webOS.service.request('luna://com.webos.service.power', {
           method: 'display/keepOn',
@@ -191,7 +191,6 @@ export class WebOSHandler {
         });
       } catch (e) {}
 
-      // Method C: ScreenSaver service setMode off
       try {
         window.webOS.service.request('luna://com.webos.service.screensaver', {
           method: 'setMode',
@@ -204,6 +203,7 @@ export class WebOSHandler {
   }
 
   updateSystemBadge(info) {
+    if (typeof document === 'undefined') return;
     const badge = document.getElementById('webos-sys-badge');
     if (badge && info) {
       badge.textContent = `webOS ${info.sdkVersion || 'TV'} (${info.modelName || 'Devant/LG'})`;

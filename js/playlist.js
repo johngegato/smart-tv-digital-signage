@@ -1,5 +1,5 @@
 /**
- * Playlist Manager Module - Data state and campaign presets
+ * Playlist Manager Module - Data state, scheduling, local blob URLs & campaign presets
  */
 import { getStoredConfig, setStoredConfig, saveMediaBlob, getMediaBlob, deleteMediaBlob } from './storage.js';
 import { MediaCacheManager } from './cache.js';
@@ -55,8 +55,28 @@ export class PlaylistManager {
     this.blobUrls = new Map(); // Cache generated object URLs for blobs
     this.mediaCache = new MediaCacheManager();
 
-    // Trigger initial background cache & garbage collection
+    // Trigger warm-up and initial background cache sync
+    this.warmLocalBlobUrls();
     setTimeout(() => this.syncCache(), 1000);
+  }
+
+  /**
+   * Warm up local blob object URLs on startup for immediate playback
+   */
+  async warmLocalBlobUrls() {
+    for (const item of this.playlist) {
+      if (item.isLocalBlob && !this.blobUrls.has(item.id)) {
+        try {
+          const blob = await getMediaBlob(item.id);
+          if (blob && typeof URL !== 'undefined' && URL.createObjectURL) {
+            const objectUrl = URL.createObjectURL(blob);
+            this.blobUrls.set(item.id, objectUrl);
+          }
+        } catch (e) {
+          console.warn('Failed to warm blob URL for item:', item.id, e);
+        }
+      }
+    }
   }
 
   /**
@@ -65,6 +85,22 @@ export class PlaylistManager {
   isItemScheduledForNow(item) {
     if (!item || !item.schedule || item.schedule === 'all') return true;
     const hour = new Date().getHours();
+    const day = new Date().getDay();
+
+    if (typeof item.schedule === 'object') {
+      if (item.schedule.daysOfWeek && Array.isArray(item.schedule.daysOfWeek)) {
+        if (!item.schedule.daysOfWeek.includes(day)) return false;
+      }
+      if (item.schedule.startTime && item.schedule.endTime) {
+        const nowMinutes = hour * 60 + new Date().getMinutes();
+        const [startH, startM] = item.schedule.startTime.split(':').map(Number);
+        const [endH, endM] = item.schedule.endTime.split(':').map(Number);
+        const startMinutes = startH * 60 + (startM || 0);
+        const endMinutes = endH * 60 + (endM || 0);
+        return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+      }
+    }
+
     if (item.schedule === 'morning') return hour >= 6 && hour < 11;
     if (item.schedule === 'afternoon') return hour >= 11 && hour < 17;
     if (item.schedule === 'evening') return hour >= 17 && hour < 23;
@@ -149,6 +185,10 @@ export class PlaylistManager {
     if (fileBlob) {
       newItem.isLocalBlob = true;
       await saveMediaBlob(newItem.id, fileBlob);
+      if (typeof URL !== 'undefined' && URL.createObjectURL) {
+        const objectUrl = URL.createObjectURL(fileBlob);
+        this.blobUrls.set(newItem.id, objectUrl);
+      }
     }
 
     this.playlist.push(newItem);
@@ -173,14 +213,17 @@ export class PlaylistManager {
       item.isLocalBlob = true;
       item.url = '';
       await saveMediaBlob(item.id, newFileBlob);
-      if (this.blobUrls.has(item.id)) {
+      if (this.blobUrls.has(item.id) && typeof URL !== 'undefined' && URL.revokeObjectURL) {
         URL.revokeObjectURL(this.blobUrls.get(item.id));
         this.blobUrls.delete(item.id);
+      }
+      if (typeof URL !== 'undefined' && URL.createObjectURL) {
+        this.blobUrls.set(item.id, URL.createObjectURL(newFileBlob));
       }
     } else if (itemData.url !== undefined && itemData.url !== '') {
       if (item.isLocalBlob) {
         await deleteMediaBlob(item.id);
-        if (this.blobUrls.has(item.id)) {
+        if (this.blobUrls.has(item.id) && typeof URL !== 'undefined' && URL.revokeObjectURL) {
           URL.revokeObjectURL(this.blobUrls.get(item.id));
           this.blobUrls.delete(item.id);
         }
@@ -200,7 +243,7 @@ export class PlaylistManager {
     const item = this.playlist.find(i => i.id === id);
     if (item && item.isLocalBlob) {
       await deleteMediaBlob(id);
-      if (this.blobUrls.has(id)) {
+      if (this.blobUrls.has(id) && typeof URL !== 'undefined' && URL.revokeObjectURL) {
         URL.revokeObjectURL(this.blobUrls.get(id));
         this.blobUrls.delete(id);
       }
@@ -225,6 +268,20 @@ export class PlaylistManager {
   }
 
   /**
+   * Merge authoritative playlist updates from Desktop Manager
+   * Preserves local unsynced blobs unless explicitly removed
+   */
+  mergeAuthoritativePlaylist(serverPlaylist) {
+    if (!Array.isArray(serverPlaylist)) return;
+    
+    // Retain local-only items that haven't been uploaded yet
+    const localOnlyItems = this.playlist.filter(item => item.isLocalBlob && !serverPlaylist.some(s => s.id === item.id));
+    
+    this.playlist = [...serverPlaylist, ...localOnlyItems];
+    this.save();
+  }
+
+  /**
    * Resolve final display URL (converting IndexedDB Blob to BlobURL if necessary)
    */
   async getResolvedUrl(item) {
@@ -234,7 +291,7 @@ export class PlaylistManager {
         return this.blobUrls.get(item.id);
       }
       const blob = await getMediaBlob(item.id);
-      if (blob) {
+      if (blob && typeof URL !== 'undefined' && URL.createObjectURL) {
         const objectUrl = URL.createObjectURL(blob);
         this.blobUrls.set(item.id, objectUrl);
         return objectUrl;

@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  signage-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: signage_desktop_manager
+    ports:
+      - "3000:3000"
+    volumes:
+      - media_uploads:/app/server/uploads
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - AUTH_TOKEN=secret_signage_token_2026
+    restart: unless-stopped
+
+volumes:
+  media_uploads:

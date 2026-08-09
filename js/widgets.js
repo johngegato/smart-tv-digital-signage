@@ -89,7 +89,7 @@ export class WidgetEngine {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     
-    const dpr = window.devicePixelRatio || 2;
+    const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 2;
     const cssSize = 140;
 
     canvas.width = cssSize * dpr;
@@ -97,7 +97,9 @@ export class WidgetEngine {
     canvas.style.width = `${cssSize}px`;
     canvas.style.height = `${cssSize}px`;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext ? canvas.getContext('2d') : null;
+    if (!ctx) return;
+
     ctx.scale(dpr, dpr);
     
     // Clear canvas background

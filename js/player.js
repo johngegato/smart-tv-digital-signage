@@ -17,8 +17,10 @@ export class SignagePlayer {
     this.layerA.className = 'media-layer active';
     this.layerB.className = 'media-layer previous';
 
-    this.viewport.appendChild(this.layerA);
-    this.viewport.appendChild(this.layerB);
+    if (this.viewport) {
+      this.viewport.appendChild(this.layerA);
+      this.viewport.appendChild(this.layerB);
+    }
 
     this.layers = [this.layerA, this.layerB];
   }
@@ -31,12 +33,14 @@ export class SignagePlayer {
     const videos = layer.querySelectorAll('video');
     videos.forEach(v => {
       try {
-        v.pause();
+        if (v.pause) v.pause();
         v.onended = null;
         v.onerror = null;
         v.removeAttribute('src');
-        v.load();
-        v.remove();
+        if (typeof v.load === 'function') {
+          try { v.load(); } catch (err) {}
+        }
+        if (v.remove) v.remove();
       } catch (e) {
         console.warn('[SignagePlayer] Error tearing down video element:', e);
       }
@@ -64,8 +68,10 @@ export class SignagePlayer {
     
     // Pause any playing video
     const activeLayer = this.layers[this.currentLayerIndex];
-    const video = activeLayer.querySelector('video');
-    if (video) video.pause();
+    if (activeLayer) {
+      const video = activeLayer.querySelector('video');
+      if (video && video.pause) video.pause();
+    }
   }
 
   /**
@@ -77,7 +83,7 @@ export class SignagePlayer {
       this.timer = null;
     }
 
-    const item = this.playlistManager.getCurrentItem();
+    const item = this.playlistManager ? this.playlistManager.getCurrentItem() : null;
     if (!item) return;
 
     const activeLayer = this.layers[this.currentLayerIndex];
@@ -116,10 +122,9 @@ export class SignagePlayer {
       video.onerror = (e) => {
         console.error('[SignagePlayer] Video failed to load:', resolvedUrl, e);
         if (resolvedUrl !== item.url && item.url) {
-          // If cached blob failed to decode, retry with original network URL
           console.warn('[SignagePlayer] Retrying video with live URL:', item.url);
           video.src = item.url;
-          video.play().catch(() => {});
+          if (video.play) video.play().catch(() => {});
           return;
         }
         if (this.isPlaying) {
@@ -129,11 +134,13 @@ export class SignagePlayer {
       };
 
       // Autoplay fallback handler
-      video.play().catch(err => {
-        console.warn('[SignagePlayer] Video Autoplay warning (muted required):', err);
-        video.muted = true;
-        video.play().catch(e => console.error('[SignagePlayer] Video Play failed:', e));
-      });
+      if (video.play) {
+        video.play().catch(err => {
+          console.warn('[SignagePlayer] Video Autoplay warning (muted required):', err);
+          video.muted = true;
+          if (video.play) video.play().catch(e => console.error('[SignagePlayer] Video Play failed:', e));
+        });
+      }
 
       nextLayer.appendChild(video);
 
@@ -170,11 +177,15 @@ export class SignagePlayer {
 
     // Trigger crossfade transition
     setTimeout(() => {
-      activeLayer.classList.remove('active');
-      activeLayer.classList.add('previous');
+      if (activeLayer) {
+        activeLayer.classList.remove('active');
+        activeLayer.classList.add('previous');
+      }
 
-      nextLayer.classList.remove('previous');
-      nextLayer.classList.add('active');
+      if (nextLayer) {
+        nextLayer.classList.remove('previous');
+        nextLayer.classList.add('active');
+      }
 
       this.currentLayerIndex = nextLayerIndex;
       this.updateCaptionOverlay(item);
@@ -194,7 +205,7 @@ export class SignagePlayer {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    this.playlistManager.next();
+    if (this.playlistManager) this.playlistManager.next();
     this.playCurrent();
   }
 
@@ -206,7 +217,7 @@ export class SignagePlayer {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    this.playlistManager.previous();
+    if (this.playlistManager) this.playlistManager.previous();
     this.playCurrent();
   }
 
@@ -216,17 +227,20 @@ export class SignagePlayer {
   toggleMute() {
     this.isMuted = !this.isMuted;
     const activeLayer = this.layers[this.currentLayerIndex];
-    const video = activeLayer.querySelector('video');
-    if (video) {
-      video.muted = this.isMuted;
+    if (activeLayer) {
+      const video = activeLayer.querySelector('video');
+      if (video) {
+        video.muted = this.isMuted;
+      }
     }
     return this.isMuted;
   }
 
   /**
-   * Update Lower Third Caption Text - Kept hidden for clean media playback
+   * Update Lower Third Caption Text
    */
   updateCaptionOverlay(item) {
+    if (typeof document === 'undefined') return;
     const captionContainer = document.getElementById('media-caption-overlay');
     if (captionContainer) {
       captionContainer.classList.remove('visible');

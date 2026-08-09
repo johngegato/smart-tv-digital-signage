@@ -38,15 +38,16 @@ export async function initStorage() {
 
 /**
  * Save Media Blob to IndexedDB
- * @param {string} id - Item Unique ID
- * @param {Blob} blob - File Blob object
+ * @param {string} id - Item Unique ID or Storage Key
+ * @param {Blob} blob - Binary File Blob object
+ * @returns {Promise<string>} Storage ID
  */
 export async function saveMediaBlob(id, blob) {
   const db = await initStorage();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const item = { id, blob, timestamp: Date.now() };
+    const item = { id, blob, size: blob ? blob.size : 0, type: blob ? blob.type : '', timestamp: Date.now() };
 
     const req = store.put(item);
     req.onsuccess = () => resolve(id);
@@ -67,7 +68,16 @@ export async function getMediaBlob(id) {
 
     const req = store.get(id);
     req.onsuccess = () => {
-      resolve(req.result ? req.result.blob : null);
+      if (!req.result) return resolve(null);
+      let blob = req.result.blob;
+      if (blob && req.result.type && blob.type !== req.result.type) {
+        try {
+          Object.defineProperty(blob, 'type', { value: req.result.type, configurable: true, writable: true });
+        } catch (e) {
+          // Fallback if property define fails
+        }
+      }
+      resolve(blob);
     };
     req.onerror = (e) => reject(e.target.error);
   });
@@ -76,6 +86,7 @@ export async function getMediaBlob(id) {
 /**
  * Delete Media Blob from IndexedDB
  * @param {string} id 
+ * @returns {Promise<boolean>}
  */
 export async function deleteMediaBlob(id) {
   const db = await initStorage();
@@ -89,12 +100,58 @@ export async function deleteMediaBlob(id) {
 }
 
 /**
+ * Retrieve all media records from IndexedDB
+ * @returns {Promise<Array<{id: string, blob: Blob, size: number, timestamp: number}>>}
+ */
+export async function getAllMediaRecords() {
+  const db = await initStorage();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/**
+ * Clear all stored media blobs from IndexedDB
+ * @returns {Promise<boolean>}
+ */
+export async function clearAllMediaBlobs() {
+  const db = await initStorage();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.clear();
+    req.onsuccess = () => resolve(true);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/**
+ * Get storage quota & usage estimate
+ * @returns {Promise<{quota: number, usage: number}>}
+ */
+export async function getStorageEstimate() {
+  if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
+    try {
+      const estimate = await navigator.storage.estimate();
+      return { quota: estimate.quota || 0, usage: estimate.usage || 0 };
+    } catch (e) {
+      console.warn('Storage estimate unavailable:', e);
+    }
+  }
+  return { quota: 0, usage: 0 };
+}
+
+/**
  * LocalStorage Helpers for Settings & Playlist Metadata
  */
 export function getStoredConfig(key, defaultValue) {
   try {
     const saved = localStorage.getItem(`signage_${key}`);
-    return saved ? JSON.parse(saved) : defaultValue;
+    return saved !== null ? JSON.parse(saved) : defaultValue;
   } catch (e) {
     return defaultValue;
   }
@@ -105,5 +162,13 @@ export function setStoredConfig(key, value) {
     localStorage.setItem(`signage_${key}`, JSON.stringify(value));
   } catch (e) {
     console.error('LocalStorage Save Error:', e);
+  }
+}
+
+export function removeStoredConfig(key) {
+  try {
+    localStorage.removeItem(`signage_${key}`);
+  } catch (e) {
+    console.error('LocalStorage Remove Error:', e);
   }
 }
